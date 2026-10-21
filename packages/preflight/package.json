@@ -1,0 +1,19 @@
+{
+  "name": "@nayaverse/preflight",
+  "version": "0.1.0",
+  "description": "Validate configuration across many sources before anything expensive happens, and heal what can be computed.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test dist/test/*.test.js",
+    "pretest": "npm run build"
+  },
+  "devDependencies": { "@types/node": "^22.10.2" }
+}
