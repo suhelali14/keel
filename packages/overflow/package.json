@@ -1,0 +1,49 @@
+{
+  "name": "@nayaverse/overflow",
+  "version": "0.1.0",
+  "description": "Find horizontal overflow at every breakpoint in CI, and name the element causing it.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./playwright": {
+      "types": "./dist/src/playwright.d.ts",
+      "default": "./dist/src/playwright.js"
+    }
+  },
+  "bin": {
+    "overflow": "./dist/src/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "responsive",
+    "overflow",
+    "horizontal-scroll",
+    "ci",
+    "breakpoints",
+    "css",
+    "testing",
+    "playwright",
+    "cdp"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test dist/test/*.test.js",
+    "pretest": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  }
+}

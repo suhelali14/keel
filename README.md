@@ -12,7 +12,7 @@ Almost every deploy pipeline verifies the *artifact*. Very few verify the
 *system*. The gap between those two is where production incidents live, and
 it is wider than it looks.
 
-Four real failures, all from one day of shipping one small site, all of which
+Five real failures, all from one day of shipping one small site, all of which
 passed every check that existed at the time:
 
 | What the check said | What was true |
@@ -34,38 +34,44 @@ catch. A check nobody has seen fail is a decoration.
 
 ## Packages
 
-Nothing here is published yet. Status is stated per package and kept honest;
-see [docs/PLAN.md](docs/PLAN.md) for sequencing.
+Nothing is published yet.
 
-| Package | Does | Status |
+| Package | Does | Tests |
 |---|---|---|
-| `@nayaverse/preflight` | Validates configuration *before* expensive work. Fail in two seconds, not after a 2.5 GB pull, a schema migration and a rollback. | planned |
-| `@nayaverse/verify-deploy` | Stamps a build id into the artifact, then asserts the **public URL** serves *that* build and every declared route answers. | planned |
-| `@nayaverse/prerender` | A route table in, crawlable HTML out: per-route head, canonical, hreflang, sitemap, robots, build stamp. | planned |
-| `@nayaverse/probe` | Browser verification over CDP: true device emulation, overflow sweeps, section isolation, contrast computed from the stylesheet. | planned |
-| `@nayaverse/lingo` | Translations whose completeness is a compile error, not a runtime blank. | planned |
-| `@nayaverse/tenant` | Hostname to tenant, for one bundle serving many customers. | planned |
-| `@nayaverse/provision` | Convergent provisioning: steps safe to run on every deploy, so a half-finished setup heals instead of needing repair. | planned |
+| **[@nayaverse/verify-deploy](packages/verify-deploy)** | Stamps a build id into the artifact, then asserts the **public URL** serves *that* build and every declared route answers. | 10 |
+| **[@nayaverse/overflow](packages/overflow)** | Finds horizontal overflow at every breakpoint, in CI, and names the element causing it. | 13 |
+| **[@nayaverse/preflight](packages/preflight)** | Validates configuration across many sources before anything expensive happens, and writes back what can be computed. | 17 |
+
+Three packages, not the seven originally planned. The difference is
+[docs/PRIOR-ART.md](docs/PRIOR-ART.md): prerendering, type-safe i18n, tenant
+resolution and provisioning are already solved, often better, by Astro,
+TanStack Start, Paraglide, t3-env, Terraform and others. Building alternatives
+would have been duplication. What survived are the gaps nobody packages, and
+the patterns worth writing down live in [docs/PATTERNS.md](docs/PATTERNS.md)
+instead of becoming thin libraries.
+
+That is also the better route to adoption. Tools get picked up for a small API
+surface and an unsolved problem — and a toolkit that duplicates envalid,
+Astro and Terraform invites the reader to notice.
 
 ---
 
-## Generic, honestly
+## Honest scope
 
-keel's interfaces are host-, database- and framework-agnostic. Its **tested
-adapters** are not the same list, and conflating those two is how a toolkit
-ends up claiming support it does not have.
+Each package says in its own README where an existing tool is the better
+answer. `preflight`'s first section tells you to use t3-env if you only have
+one process. `overflow` tells you to use its Playwright adapter rather than
+its bundled driver if you already have Playwright.
 
-Every adapter carries one of three labels, and they mean exactly this:
+Three labels are used for anything that touches an external service, and they
+mean exactly this:
 
-- **Proven** — runs in production for a real paying customer, and the test
-  suite exercises the real module rather than a copy of its logic.
-- **Tested** — covered by tests against a real instance or a faithful double,
-  not yet carrying production traffic.
+- **Proven** — runs in production for a real paying customer, with tests
+  exercising the shipped module rather than a copy of its logic.
+- **Tested** — covered against a real instance or a faithful double, not yet
+  carrying production traffic.
 - **Contributed** — written and type-checked, never run against the real
-  service by a maintainer. Treat it as a starting point.
-
-No adapter is listed without one. If a service you need is missing, the
-interfaces are small on purpose: see `docs/ADAPTERS.md` when it lands.
+  service by a maintainer. A starting point.
 
 ---
 
@@ -75,7 +81,8 @@ interfaces are small on purpose: see `docs/ADAPTERS.md` when it lands.
   infrastructure and monorepos. keel assumes you already deploy somehow and
   adds the layer that checks whether what you deployed is actually serving.
 - **Not a framework.** There is no `keel build`, no project template, nothing
-  that owns your app's structure. Every package is usable alone.
+  that owns your app's structure. Every package is usable alone, and none of
+  them depend on each other.
 - **Not a hosting product.** It never needs credentials beyond what your own
   pipeline already holds, and it stores nothing.
 
@@ -85,14 +92,24 @@ interfaces are small on purpose: see `docs/ADAPTERS.md` when it lands.
 
 Extracted from a single-tenant-per-deployment SaaS: one codebase redeployed
 per customer, each with its own database, domain, TLS certificate and
-container. That shape makes deployment correctness unusually load-bearing —
-a silent failure is not one broken site, it is one broken *customer* — and it
-is what produced the discipline above.
+container. That shape makes deployment correctness unusually load-bearing — a
+silent failure is not one broken site, it is one broken *customer* — and it is
+what produced the discipline above.
 
 The patterns are not specific to it. The failures in that table are the
 ordinary failures of shipping anything.
 
 ---
+
+## Development
+
+```bash
+npm install
+npm run build
+npm test
+```
+
+Node 20+. No runtime dependencies in any package.
 
 ## Licence
 
