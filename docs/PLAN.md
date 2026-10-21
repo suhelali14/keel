@@ -1,8 +1,8 @@
 # Implementation plan
 
 > **Superseded in part.** The prior-art check in [PRIOR-ART.md](PRIOR-ART.md)
-> cut this from seven packages to three. , ,  and
->  are already solved by Astro, TanStack Start, Paraglide, t3-env
+> cut this from seven packages to three. `prerender`, `lingo`, `tenant` and
+> `provision` are already solved by Astro, TanStack Start, Paraglide, t3-env
 > and Terraform; what was worth keeping from them is in
 > [PATTERNS.md](PATTERNS.md). This file is kept for the decisions and the
 > sequencing reasoning, not as a to-do list.
