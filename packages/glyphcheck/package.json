@@ -1,0 +1,73 @@
+{
+  "name": "@nayaverse/glyphcheck",
+  "version": "0.1.0",
+  "description": "Find the text faults nobody can see in a script they cannot read: silent font fallback, colliding lines, clipped glyphs, broken joins, missing direction.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./playwright": {
+      "types": "./dist/src/playwright.d.ts",
+      "default": "./dist/src/playwright.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "glyphcheck": "dist/src/cli.js"
+  },
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
+  "keywords": [
+    "i18n",
+    "l10n",
+    "internationalization",
+    "typography",
+    "fonts",
+    "font-fallback",
+    "devanagari",
+    "arabic",
+    "thai",
+    "rtl",
+    "indic",
+    "cjk",
+    "accessibility",
+    "testing",
+    "ci",
+    "cdp",
+    "playwright"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test dist/test/*.test.js",
+    "pretest": "npm run build",
+    "prepublishOnly": "npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suhelali14/keel.git",
+    "directory": "packages/glyphcheck"
+  },
+  "homepage": "https://github.com/suhelali14/keel/tree/main/packages/glyphcheck#readme",
+  "bugs": {
+    "url": "https://github.com/suhelali14/keel/issues"
+  },
+  "author": "Suhelali Pakjade",
+  "sideEffects": false
+}

@@ -20,6 +20,7 @@ passed every check that existed at the time:
 | Build green, all 9 pages written, correct bytes, correct language, titles and canonicals present | A third of the site returned **404**. The files were filed under names the host never looks for. |
 | Screenshots showed a broken mobile layout | The layout was fine. The browser could not open a window narrower than 494px, so every "390px" capture was a desktop layout clipped. |
 | The font name was in the shipped CSS | The font had no such family. The name was right and the file served nothing. |
+| The Devanagari font was declared, served a 200, and loaded | Every Marathi and Hindi paragraph was drawn in the **Windows UI font**. A Latin face has no Devanagari glyphs, and the stack ran out of our fonts before it reached one that did. |
 | The config check failed, naming app A | The fault was in app B. The check had an `else` branch that assumed only two apps existed. |
 | The deployment URL returned 404 and 302 | Routing was fine. The URL was behind an auth wall and the checker was interrogating a login page. |
 
@@ -34,15 +35,18 @@ catch. A check nobody has seen fail is a decoration.
 
 ## Packages
 
-Nothing is published yet.
-
 | Package | Does | Tests |
 |---|---|---|
 | **[@nayaverse/verify-deploy](packages/verify-deploy)** | Stamps a build id into the artifact, then asserts the **public URL** serves *that* build and every declared route answers. | 10 |
 | **[@nayaverse/overflow](packages/overflow)** | Finds horizontal overflow at every breakpoint, in CI, and names the element causing it. | 13 |
 | **[@nayaverse/preflight](packages/preflight)** | Validates configuration across many sources before anything expensive happens, and writes back what can be computed. | 17 |
+| **[@nayaverse/glyphcheck](packages/glyphcheck)** | Asks the browser which font *actually* drew each run of text, and reports the typographic faults nobody can self-detect in a script they cannot read. | 51 |
 
-Three packages, not the seven originally planned. The difference is
+The first three were published at 0.1.1. `glyphcheck` came last and is the
+only one that found a bug in this repo's own production site on its first run
+— 589 of them, in two languages, behind a green build.
+
+Four packages, not the seven originally planned. The difference is
 [docs/PRIOR-ART.md](docs/PRIOR-ART.md): prerendering, type-safe i18n, tenant
 resolution and provisioning are already solved, often better, by Astro,
 TanStack Start, Paraglide, t3-env, Terraform and others. Building alternatives

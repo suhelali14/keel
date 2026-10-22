@@ -161,6 +161,45 @@ make dry-run the default for anything that creates billable infrastructure.
 
 ---
 
+## 8. Script-correctness checking for rendered text
+
+**Searched for:** a tool that reports whether non-Latin text on a live page
+rendered in the fonts the stylesheet asked for, whether its lines collide,
+whether tracking has broken a connected script.
+
+**Found:** nothing that does this.
+
+- **Pseudo-localisation tools** (`pseudo-localization`, 141 stars; the same
+  feature in Chrome DevTools and in several i18n frameworks) transform Latin
+  into accented Latin and pad it to simulate German length. They test that a
+  layout survives longer strings and wider diacritics. They do not render
+  Devanagari, Arabic or Thai, so they cannot surface anything about how those
+  scripts actually lay out.
+- **axe-core** (7,685 stars) and **Lighthouse** (30,921) check contrast, roles,
+  labels and structure. Neither inspects the resolved font of a text run, and
+  neither has a notion of a script's typographic requirements.
+- **Visual-regression tools** (Percy, Chromatic, BackstopJS) catch a change
+  against a previous screenshot. They cannot catch a page that has always
+  been wrong, which is the normal state of a language nobody on the team
+  reads.
+- **`melliforge/fitlocale`** is the closest in intent and was pushed on
+  2026-10-21 with 0 stars. Somebody else has seen the same gap, which is a
+  reason to move rather than a reason not to.
+
+**Evidence the problem is real and long-standing:** the W3C Indic
+internationalisation list has a 2013 thread on `letter-spacing` breaking the
+shirorekha
+([public-i18n-indic](https://lists.w3.org/Archives/Public/public-i18n-indic/2013OctDec/0013.html)),
+and Spotify has an open community thread about Devanagari lyrics rendering
+with overlapping lines
+([community.spotify.com](https://community.spotify.com/t5/Other-Podcasts-Partners-etc/Please-fix-the-line-height-of-lyrics-in-Devnagari-Script/td-p/5342153)).
+These are not obscure projects without the means to fix them. They are
+projects with no way to *find* them.
+
+**Verdict: build.** `CSS.getPlatformFontsForNode` makes the hard part a single
+protocol call, nothing packages it, and the first run against this repo's own
+production site returned 589 findings behind a green build.
+
 ## Where this leaves the plan
 
 | Was planned | Now |

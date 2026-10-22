@@ -1,0 +1,404 @@
+import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
+import {
+  analyse,
+  groupIntoLines,
+  parseFontStack,
+  resolvedFromStack,
+  type LineBox,
+  type Measured,
+} from '../src/analyse.js';
+
+/** A clean element. Each test breaks exactly one thing about it. */
+const el = (over: Partial<Measured> = {}): Measured => ({
+  selector: 'main > p',
+  tag: 'P',
+  text: 'तुम्ही काय विकता, काय शिल्लक आहे',
+  declaredFamilies: ['ibm plex sans', 'ibm plex sans devanagari', 'sans-serif'],
+  resolvedFamilies: ['IBM Plex Sans Devanagari'],
+  fontSizePx: 16,
+  lineHeightPx: 24,
+  letterSpacingPx: 0,
+  textTransform: 'none',
+  direction: 'ltr',
+  textAlign: 'start',
+  lineBoxes: [
+    { top: 100, bottom: 118, left: 0, right: 300 },
+    { top: 124, bottom: 142, left: 0, right: 260 },
+  ],
+  contentTop: 98,
+  contentBottom: 144,
+  clipped: false,
+  ...over,
+});
+
+const rules = (ms: Measured[]) => analyse(ms).findings.map((f) => f.rule);
+
+// ---------------------------------------------------------------------------
+// The baseline. If this fails, every other test is meaningless.
+// ---------------------------------------------------------------------------
+
+test('a correctly set page produces no findings', () => {
+  const r = analyse([el()]);
+  assert.deepEqual(r.findings, []);
+  assert.equal(r.ok, true);
+  assert.equal(r.examined, 1);
+  assert.deepEqual(r.scripts, ['Devanagari']);
+});
+
+test('Latin text is not examined, because the rules have nothing to say about it', () => {
+  const r = analyse([el({ text: 'What you sell, and what is left' })]);
+  assert.equal(r.examined, 0);
+  assert.deepEqual(r.findings, []);
+});
+
+// ---------------------------------------------------------------------------
+// parseFontStack
+// ---------------------------------------------------------------------------
+
+test('parses a stack with quotes, spaces and generics', () => {
+  assert.deepEqual(
+    parseFontStack(`"IBM Plex Sans Variable", 'IBM Plex Sans', system-ui, sans-serif`),
+    ['ibm plex sans variable', 'ibm plex sans', 'system-ui', 'sans-serif'],
+  );
+});
+
+test('a comma inside a quoted family name does not split it', () => {
+  assert.deepEqual(parseFontStack(`"Foo, Bar", serif`), ['foo, bar', 'serif']);
+});
+
+// ---------------------------------------------------------------------------
+// resolvedFromStack -- the match that decides the headline rule
+// ---------------------------------------------------------------------------
+
+test('a weight suffix on the reported face still counts as the declared family', () => {
+  assert.equal(
+    resolvedFromStack('IBM Plex Sans Devanagari SemiBold', ['ibm plex sans devanagari']),
+    'ibm plex sans devanagari',
+  );
+  assert.equal(resolvedFromStack('Khand SemiBold', ['khand']), 'khand');
+  assert.equal(resolvedFromStack('Inter 600 Italic', ['inter']), 'inter');
+});
+
+test('an extra word that is NOT a weight is a different family', () => {
+  // The whole rule turns on this. "IBM Plex Sans Devanagari" is a prefix
+  // match for a stack declaring only "IBM Plex Sans"; treating it as the
+  // same family would report a clean page for the exact fallback being
+  // hunted. Also the reverse: a Latin-only stack must not absorb it.
+  assert.equal(resolvedFromStack('IBM Plex Sans Devanagari', ['ibm plex sans']), undefined);
+  assert.equal(resolvedFromStack('Noto Sans Thai', ['noto sans']), undefined);
+  assert.equal(resolvedFromStack('Arial Narrow', ['arial']), undefined);
+});
+
+test('generic keywords in the stack never satisfy a resolved family', () => {
+  assert.equal(resolvedFromStack('Nirmala UI', ['system-ui', 'sans-serif']), undefined);
+});
+
+test('the most specific declared family is the one reported as the match', () => {
+  assert.equal(
+    resolvedFromStack('IBM Plex Sans Devanagari', ['ibm plex sans', 'ibm plex sans devanagari']),
+    'ibm plex sans devanagari',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// font-fallback
+// ---------------------------------------------------------------------------
+
+test('the real bug: Devanagari drawn in the Windows system font', () => {
+  const r = analyse([el({
+    declaredFamilies: ['ibm plex sans variable', 'ibm plex sans', 'system-ui', 'sans-serif'],
+    resolvedFamilies: ['Nirmala UI', 'IBM Plex Sans'],
+  })]);
+  const f = r.findings.find((x) => x.rule === 'font-fallback');
+  assert.ok(f, 'expected a font-fallback finding');
+  assert.equal(f.impact, 'critical');
+  assert.match(f.summary, /Nirmala UI/);
+  assert.match(f.detail, /declared: ibm plex sans variable, ibm plex sans/);
+  // The families that DID come from the stack must not be blamed.
+  assert.doesNotMatch(f.summary, /IBM Plex Sans,/);
+});
+
+test('a stack of nothing but generics is a choice, not a fault', () => {
+  const r = analyse([el({
+    declaredFamilies: ['system-ui', 'sans-serif'],
+    resolvedFamilies: ['Nirmala UI'],
+  })]);
+  assert.ok(!rules([el({
+    declaredFamilies: ['system-ui', 'sans-serif'],
+    resolvedFamilies: ['Nirmala UI'],
+  })]).includes('font-fallback'));
+  assert.equal(r.findings.length, 0);
+});
+
+test('a mixed run is clean when every face came from the stack', () => {
+  assert.ok(!rules([el({
+    declaredFamilies: ['barlow condensed', 'khand'],
+    resolvedFamilies: ['Barlow Condensed SemiBold', 'Khand SemiBold'],
+  })]).includes('font-fallback'));
+});
+
+test('no reported faces means nothing to judge, not a fault', () => {
+  assert.deepEqual(analyse([el({ resolvedFamilies: [] })]).findings, []);
+});
+
+// ---------------------------------------------------------------------------
+// groupIntoLines + line-collision
+// ---------------------------------------------------------------------------
+
+const r = (top: number, bottom: number, left = 0, right = 100): LineBox =>
+  ({ top, bottom, left, right });
+
+test('rects side by side on one line become one line', () => {
+  const lines = groupIntoLines([r(100, 118, 0, 50), r(100, 118, 50, 120), r(101, 117, 120, 160)]);
+  assert.equal(lines.length, 1);
+  assert.deepEqual(lines[0], { top: 100, bottom: 118, left: 0, right: 160 });
+});
+
+test('two lines that barely touch stay two lines', () => {
+  assert.equal(groupIntoLines([r(100, 118), r(118, 136)]).length, 2);
+});
+
+test('two lines overlapping by a few pixels stay two lines, so the overlap is visible', () => {
+  const lines = groupIntoLines([r(100, 118), r(114, 132)]);
+  assert.equal(lines.length, 2, 'a 4px overlap of an 18px line must not be merged away');
+});
+
+test('zero-height rects are discarded', () => {
+  assert.deepEqual(groupIntoLines([r(100, 100), r(100, 118)]), [r(100, 118)]);
+});
+
+test('inline children on one line do not fake a collision', () => {
+  // Two spans at the same vertical position. Ungrouped, rect[0].bottom minus
+  // rect[1].top is a full line height of "overlap".
+  assert.ok(!rules([el({
+    lineBoxes: [r(100, 118, 0, 50), r(100, 118, 50, 120)],
+  })]).includes('line-collision'));
+});
+
+test('genuinely colliding lines are reported with the overlap measured', () => {
+  const found = analyse([el({
+    lineHeightPx: 14,
+    lineBoxes: [r(100, 118), r(114, 132)],
+  })]).findings.find((f) => f.rule === 'line-collision');
+  assert.ok(found);
+  assert.equal(found.impact, 'critical');
+  assert.match(found.summary, /overlap by 4px/);
+  assert.match(found.detail, /needs about 1\.35x/);
+});
+
+test('one line cannot collide with itself', () => {
+  assert.ok(!rules([el({ lineBoxes: [r(100, 118)] })]).includes('line-collision'));
+});
+
+// ---------------------------------------------------------------------------
+// glyph-clipping
+// ---------------------------------------------------------------------------
+
+test('ink escaping a clipping box is reported', () => {
+  const found = analyse([el({
+    clipped: true,
+    contentTop: 100,
+    contentBottom: 130,
+    lineBoxes: [r(100, 118), r(124, 142)],
+  })]).findings.find((f) => f.rule === 'glyph-clipping');
+  assert.ok(found);
+  assert.match(found.summary, /cut off by 12px/);
+});
+
+test('text hidden for a screen reader is not a clipping bug', () => {
+  // The `.sr-only` pattern: a 1px box with overflow hidden, holding real
+  // text at a real font size. Every line of it escapes, on purpose. A rule
+  // that reports this fails every accessible page there is.
+  assert.ok(!rules([el({
+    clipped: true,
+    fontSizePx: 16,
+    contentTop: 0,
+    contentBottom: 1,
+    lineBoxes: [r(1, 21)],
+  })]).includes('glyph-clipping'));
+});
+
+test('a box that is merely too short IS reported', () => {
+  // The boundary matters: one line of 16px text in a 20px box that clips by
+  // 6px is a real fault, and must not be waved away as hidden text.
+  assert.ok(rules([el({
+    clipped: true,
+    fontSizePx: 16,
+    contentTop: 0,
+    contentBottom: 20,
+    lineBoxes: [r(0, 26)],
+  })]).includes('glyph-clipping'));
+});
+
+test('ink escaping a box that does not clip is not reported', () => {
+  assert.ok(!rules([el({
+    clipped: false,
+    contentTop: 100,
+    contentBottom: 130,
+    lineBoxes: [r(100, 118), r(124, 142)],
+  })]).includes('glyph-clipping'));
+});
+
+// ---------------------------------------------------------------------------
+// tracking-damage -- script-dependent, which is the point
+// ---------------------------------------------------------------------------
+
+test('letter-spacing on Devanagari breaks the shirorekha and is reported', () => {
+  const found = analyse([el({ letterSpacingPx: 1.6 })]).findings
+    .find((f) => f.rule === 'tracking-damage');
+  assert.ok(found);
+  assert.match(found.summary, /Devanagari/);
+});
+
+test('letter-spacing on Arabic is reported too', () => {
+  const found = analyse([el({ text: 'ما تبيعه وما تبقى', letterSpacingPx: 1, direction: 'rtl' })])
+    .findings.find((f) => f.rule === 'tracking-damage');
+  assert.ok(found);
+  assert.match(found.summary, /Arabic/);
+});
+
+test('letter-spacing on a script whose letters do not connect is left alone', () => {
+  // Tamil has stacked marks but no connecting headline, so tracking is a
+  // style choice rather than damage. Reporting it would be the kind of
+  // false positive that gets a linter switched off.
+  assert.ok(!rules([el({ text: 'நீங்கள் விற்பது', letterSpacingPx: 2 })])
+    .includes('tracking-damage'));
+  assert.ok(!rules([el({ text: '残りの在庫', letterSpacingPx: 2 })])
+    .includes('tracking-damage'));
+});
+
+test('a letter-spacing of zero is not a finding', () => {
+  assert.ok(!rules([el({ letterSpacingPx: 0 })]).includes('tracking-damage'));
+  assert.ok(!rules([el({ letterSpacingPx: 0.05 })]).includes('tracking-damage'));
+});
+
+// ---------------------------------------------------------------------------
+// case-transform
+// ---------------------------------------------------------------------------
+
+test('text-transform on a caseless script is reported', () => {
+  for (const t of ['uppercase', 'lowercase', 'capitalize']) {
+    const found = analyse([el({ textTransform: t })]).findings
+      .find((f) => f.rule === 'case-transform');
+    assert.ok(found, `expected a finding for ${t}`);
+    assert.equal(found.impact, 'moderate');
+  }
+});
+
+test('text-transform on a cased non-Latin script is left alone', () => {
+  assert.ok(!rules([el({ text: 'Что вы продаёте', textTransform: 'uppercase' })])
+    .includes('case-transform'));
+});
+
+test('text-transform: none is not a finding', () => {
+  assert.ok(!rules([el({ textTransform: 'none' })]).includes('case-transform'));
+});
+
+// ---------------------------------------------------------------------------
+// direction
+// ---------------------------------------------------------------------------
+
+test('right-to-left text in a left-to-right box is reported', () => {
+  const found = analyse([el({ text: 'ما تبيعه وما تبقى في المخزون.', direction: 'ltr' })])
+    .findings.find((f) => f.rule === 'direction-missing');
+  assert.ok(found);
+  assert.equal(found.impact, 'critical', 'a full stop is a character the direction moves');
+});
+
+test('severity follows what the text contains, not only the style', () => {
+  const impactOf = (text: string) =>
+    analyse([el({ text, direction: 'ltr' })]).findings
+      .find((f) => f.rule === 'direction-missing')?.impact;
+
+  // A bare word of strongly right-to-left letters lays out identically
+  // either way. Reporting it as critical alongside a real bidi fault is how
+  // a checker trains people to ignore it. It is still reported, because the
+  // next string through that element will not be a bare word.
+  assert.equal(impactOf('اردو'), 'moderate');
+  assert.equal(impactOf('العربية'), 'moderate');
+
+  // Anything whose side of the line is decided by the paragraph direction.
+  assert.equal(impactOf('الطلب 1234'), 'critical', 'Western digits');
+  assert.equal(impactOf('الطلب ١٢٣٤'), 'critical', 'Arabic-Indic digits');
+  assert.equal(impactOf('خطة Nayaverse الشهرية للعيادات'), 'critical', 'embedded Latin');
+  assert.equal(impactOf('السعر %20'), 'critical');
+  assert.equal(impactOf('ما تبيعه وما تبقى.'), 'critical', 'a neutral at the edge of the run');
+
+  // And the case that is genuinely fine: a comma between two right-to-left
+  // characters resolves to right-to-left and lands correctly even here.
+  assert.equal(impactOf('ما تبيعه، وما تبقى'), 'moderate', 'a neutral in the middle');
+});
+
+test('right-to-left text in a right-to-left box is correct', () => {
+  assert.ok(!rules([el({ text: 'ما تبيعه وما تبقى في المخزون', direction: 'rtl' })])
+    .includes('direction-missing'));
+});
+
+test('a physical text-align inside rtl is reported, a logical one is not', () => {
+  const rtl = { text: 'ما تبيعه وما تبقى في المخزون', direction: 'rtl' };
+  assert.ok(rules([el({ ...rtl, textAlign: 'left' })]).includes('physical-text-align'));
+  assert.ok(rules([el({ ...rtl, textAlign: 'right' })]).includes('physical-text-align'));
+  assert.ok(!rules([el({ ...rtl, textAlign: 'start' })]).includes('physical-text-align'));
+  assert.ok(!rules([el({ ...rtl, textAlign: 'center' })]).includes('physical-text-align'));
+});
+
+test('a physical text-align in a left-to-right box is normal and not reported', () => {
+  assert.ok(!rules([el({ textAlign: 'left' })]).includes('physical-text-align'));
+});
+
+// ---------------------------------------------------------------------------
+// Reporting
+// ---------------------------------------------------------------------------
+
+test('findings come back worst first', () => {
+  const r = analyse([el({
+    resolvedFamilies: ['Nirmala UI'],
+    letterSpacingPx: 2,
+    textTransform: 'uppercase',
+  })]);
+  assert.deepEqual(r.findings.map((f) => f.impact), ['critical', 'serious', 'moderate']);
+  assert.equal(r.ok, false);
+});
+
+test('a disabled rule is not run', () => {
+  const broken = [el({ resolvedFamilies: ['Nirmala UI'], letterSpacingPx: 2 })];
+  assert.deepEqual(
+    analyse(broken, { disabled: ['font-fallback'] }).findings.map((f) => f.rule),
+    ['tracking-damage'],
+  );
+});
+
+test('a Latin word inside a Hindi sentence does not make the sentence Latin', () => {
+  const r = analyse([el({
+    text: 'आपका Nayaverse डैशबोर्ड तैयार है',
+    resolvedFamilies: ['Nirmala UI'],
+  })]);
+  const f = r.findings.find((x) => x.rule === 'font-fallback');
+  assert.ok(f);
+  assert.equal(f.scriptLabel, 'Devanagari');
+});
+
+test('the collision tolerance is honoured', () => {
+  const sub = [el({ lineBoxes: [r(100, 118), r(117.7, 136)] })];
+  assert.ok(!rules(sub).includes('line-collision'), 'a 0.3px overlap is rounding, not collision');
+  assert.ok(analyse(sub, { collisionTolerancePx: 0.1 }).findings
+    .some((f) => f.rule === 'line-collision'));
+});
+
+test('text too short to identify is skipped', () => {
+  assert.equal(analyse([el({ text: 'अ' })]).examined, 0);
+});
+
+test('a known boundary: a short non-Latin phrase behind a long Latin name is skipped', () => {
+  // "خطة Nayaverse" is three Arabic letters and nine Latin ones, so by
+  // character count it is a Latin string and is left alone. That is the cost
+  // of deciding the script by majority, and it is the right trade: the
+  // alternative is asking Arabic questions of English buttons that happen to
+  // carry one foreign word. Recorded as a test so it stays a decision rather
+  // than becoming a surprise.
+  assert.equal(analyse([el({ text: 'خطة Nayaverse', direction: 'ltr' })]).examined, 0);
+  // One more word of Arabic and it is examined again.
+  assert.equal(analyse([el({ text: 'خطة Nayaverse الشهرية', direction: 'ltr' })]).examined, 1);
+});

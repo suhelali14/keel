@@ -1,6 +1,7 @@
 # Publishing
 
-Three packages under the `@nayaverse` scope. Nothing is published yet.
+Four packages under the `@nayaverse` scope. `verify-deploy`, `overflow` and
+`preflight` are published at 0.1.1; `glyphcheck` is new and unpublished.
 
 ## One-time setup
 
@@ -74,14 +75,20 @@ expiry short and put it in the repo as `NPM_TOKEN`:
 ```
 
 A granular token scoped to these packages is the right shape for this: a leak
-lets somebody publish these three packages, not touch the whole account.
+lets somebody publish these packages, not touch the whole account.
 
 ## Publishing
 
 ```bash
 npm install
-npm test                      # 40 tests; prepublishOnly runs them again
+npm test                      # 91 tests; prepublishOnly runs them again
 npm run release               # publishes all three, public
+```
+
+To publish only the new one, run it from its own directory:
+
+```bash
+cd packages/glyphcheck && npm publish --access public
 ```
 
 `npm run release` is `npm publish --workspaces --access public`. The `--access
@@ -126,7 +133,7 @@ artifact works, rather than the source:
 
 ```bash
 tmp=$(mktemp -d)
-for p in verify-deploy overflow preflight; do
+for p in verify-deploy overflow preflight glyphcheck; do
   (cd packages/$p && npm pack --pack-destination "$tmp")
 done
 cd "$tmp" && npm init -y && npm install ./*.tgz
