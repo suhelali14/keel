@@ -74,7 +74,11 @@ export const checkWith = async (
         tag: r.tag,
         text: r.text,
         declaredFamilies: parseFontStack(r.rawFontFamily),
-        resolvedFamilies: resolved.map((f) => f.familyName),
+        resolvedFonts: resolved.map((f) => ({
+          family: f.familyName,
+          glyphCount: f.glyphCount,
+          isCustomFont: f.isCustomFont,
+        })),
         fontSizePx: r.fontSizePx,
         lineHeightPx: r.lineHeightPx,
         letterSpacingPx: r.letterSpacingPx,

@@ -198,7 +198,7 @@ projects with no way to *find* them.
 
 **Verdict: build.** `CSS.getPlatformFontsForNode` makes the hard part a single
 protocol call, nothing packages it, and the first run against this repo's own
-production site returned 589 findings behind a green build.
+production site returned 469 findings behind a green build.
 
 ## Where this leaves the plan
 

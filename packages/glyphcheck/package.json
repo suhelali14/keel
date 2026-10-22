@@ -1,6 +1,6 @@
 {
   "name": "@nayaverse/glyphcheck",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Find the text faults nobody can see in a script they cannot read: silent font fallback, colliding lines, clipped glyphs, broken joins, missing direction.",
   "license": "MIT",
   "type": "module",

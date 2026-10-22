@@ -5,3 +5,8 @@ dist/
 .env.*
 !.env.example
 .DS_Store
+
+# Survey output: regenerate with scripts/survey.mjs rather than committing a
+# snapshot that goes stale the moment any of these sites is redeployed.
+survey-report.md
+survey-report.json

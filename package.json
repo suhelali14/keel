@@ -22,5 +22,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/suhelali14/keel.git"
+  },
+  "dependencies": {
+    "@nayaverse/glyphcheck": "*",
+    "@nayaverse/overflow": "*"
   }
 }

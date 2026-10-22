@@ -40,11 +40,11 @@ catch. A check nobody has seen fail is a decoration.
 | **[@nayaverse/verify-deploy](packages/verify-deploy)** | Stamps a build id into the artifact, then asserts the **public URL** serves *that* build and every declared route answers. | 10 |
 | **[@nayaverse/overflow](packages/overflow)** | Finds horizontal overflow at every breakpoint, in CI, and names the element causing it. | 13 |
 | **[@nayaverse/preflight](packages/preflight)** | Validates configuration across many sources before anything expensive happens, and writes back what can be computed. | 17 |
-| **[@nayaverse/glyphcheck](packages/glyphcheck)** | Asks the browser which font *actually* drew each run of text, and reports the typographic faults nobody can self-detect in a script they cannot read. | 51 |
+| **[@nayaverse/glyphcheck](packages/glyphcheck)** | Asks the browser which font *actually* drew each run of text, and reports the typographic faults nobody can self-detect in a script they cannot read. | 63 |
 
 The first three were published at 0.1.1. `glyphcheck` came last and is the
 only one that found a bug in this repo's own production site on its first run
-— 589 of them, in two languages, behind a green build.
+— 469 of them, in two languages, behind a green build.
 
 Four packages, not the seven originally planned. The difference is
 [docs/PRIOR-ART.md](docs/PRIOR-ART.md): prerendering, type-safe i18n, tenant
@@ -109,7 +109,8 @@ ordinary failures of shipping anything.
 
 | | |
 |---|---|
-| [docs/VALUE.md](docs/VALUE.md) | What each package solves and what it is worth, measured — 43 lines of shell replaced by 6, 589 text faults found behind a green build, and which packages are not yet earning anything. |
+| [docs/VALUE.md](docs/VALUE.md) | What each package solves and what it is worth, measured — 43 lines of shell replaced by 6, 469 text faults found behind a green build, and which packages are not yet earning anything. |
+| [docs/SURVEY.md](docs/SURVEY.md) | The packages pointed at 11 pages nobody here built — what they found, and the four times the survey corrected the headline rule before it was fit to publish. |
 | [docs/USING-IT.md](docs/USING-IT.md) | The worked before-and-after of swapping hand-rolled deploy checks for these. |
 | [docs/PRIOR-ART.md](docs/PRIOR-ART.md) | What already exists, and why three of the seven originally planned packages were not built. |
 | [docs/PATTERNS.md](docs/PATTERNS.md) | The patterns worth writing down rather than packaging. |
@@ -120,7 +121,7 @@ ordinary failures of shipping anything.
 ```bash
 npm install
 npm run build
-npm test          # 91 tests
+npm test          # 103 tests
 ```
 
 Node 20+. No runtime dependencies in any package.

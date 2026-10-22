@@ -20,6 +20,58 @@ export type RuleId =
 
 export type Impact = 'critical' | 'serious' | 'moderate';
 
+/** One font the browser reports as having drawn part of an element's text. */
+export interface ResolvedFont {
+  readonly family: string;
+  readonly glyphCount: number;
+  /**
+   * True when this came from an `@font-face` the page loaded, false when it
+   * came off the machine.
+   *
+   * This is what separates a site that shipped a face for a script from one
+   * that did not. BBC Arabic declares `times new roman`, which carries Arabic
+   * glyphs on Windows -- so without this field that page looks like it ships
+   * an Arabic face, and every element missing one is reported as an
+   * inconsistency rather than as the system-font strategy it actually is.
+   */
+  readonly isCustomFont: boolean;
+}
+
+/**
+ * How much of this run is actually in the given script, counting only
+ * characters a font has to have a real glyph for.
+ *
+ * Spaces and punctuation are excluded because every font draws them, so they
+ * say nothing about which font was needed. Digits and letters of other
+ * scripts count against, because they are what a Latin face legitimately
+ * renders inside an otherwise non-Latin run.
+ */
+export const scriptPurity = (text: string, script: Script): number => {
+  let own = 0;
+  let other = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp === undefined) continue;
+    if (/\s/u.test(ch)) continue;
+    if (script.ranges.some(([lo, hi]) => cp >= lo && cp <= hi)) own += 1;
+    else if (/[\p{L}\p{N}]/u.test(ch)) other += 1;
+  }
+  return own + other === 0 ? 0 : own / (own + other);
+};
+
+/**
+ * The font that drew the bulk of this element's text.
+ *
+ * An element whose dominant script is Devanagari is mostly Devanagari
+ * characters, so the font credited with the most glyphs is the one rendering
+ * the script. Everything else in the list drew a space, a digit or a bullet.
+ */
+export const primaryFont = (fonts: readonly ResolvedFont[]): ResolvedFont | undefined =>
+  fonts.reduce(
+    (best, f) => (!best || f.glyphCount > best.glyphCount ? f : best),
+    undefined as ResolvedFont | undefined,
+  );
+
 /** One line of text as the browser laid it out. */
 export interface LineBox {
   readonly top: number;
@@ -41,12 +93,18 @@ export interface Measured {
   /** The author's stack, parsed from the computed `font-family`. */
   readonly declaredFamilies: readonly string[];
   /**
-   * The families that actually drew the glyphs, in the order the browser
-   * reports them. This cannot be read from the page -- no web API exposes it
-   * -- so it comes from the debugging protocol. It is the whole reason this
-   * package needs a browser connection rather than a DOM parser.
+   * The fonts that actually drew the glyphs, with how many each drew. This
+   * cannot be read from the page -- no web API exposes it -- so it comes from
+   * the debugging protocol. It is the whole reason this package needs a
+   * browser connection rather than a DOM parser.
+   *
+   * The counts are load-bearing, not informational. A run of Devanagari with
+   * one space in it reports two fonts: the system face that drew fourteen
+   * glyphs, and the author's Latin face that drew the space. Reading that as
+   * "a declared font rendered this element" is how a checker comes to call a
+   * broken page correct, and it is why these are counts rather than names.
    */
-  readonly resolvedFamilies: readonly string[];
+  readonly resolvedFonts: readonly ResolvedFont[];
   readonly fontSizePx: number;
   readonly lineHeightPx: number;
   readonly letterSpacingPx: number;
@@ -96,6 +154,18 @@ export interface AnalyseOptions {
    * join is broken in theory and intact to every eye that reads it.
    */
   readonly trackingToleranceEm?: number;
+  /**
+   * How much of a run must be in its own script before the resolved font can
+   * be attributed to that script. Below this, the run is skipped by the
+   * font-fallback rule rather than guessed at.
+   *
+   * The default is 0.6 rather than a bare majority because the attribution
+   * assumes roughly one glyph per character, and Devanagari and its relatives
+   * break that assumption in one direction: a conjunct of three characters
+   * becomes one or two glyphs. So a script needs a clear majority of the
+   * characters before it can be assumed to hold a majority of the glyphs.
+   */
+  readonly minScriptPurity?: number;
   /** Rules to leave out of this run. */
   readonly disabled?: readonly RuleId[];
   /** Ignore elements whose text is shorter than this. */
@@ -216,7 +286,24 @@ const round = (n: number, places = 1): number => {
   return Math.round(n * f) / f;
 };
 
-type Rule = (m: Measured, s: Script, o: Required<Omit<AnalyseOptions, 'disabled'>>) => Finding | undefined;
+/**
+ * What the whole page tells us, which no single element can.
+ *
+ * `covered` holds the scripts this page demonstrably HAS a face for: some
+ * element in that script resolved to a family its own stack named. The
+ * font-fallback rule is a different finding depending on it, and getting
+ * that wrong made the rule fire on every multilingual site surveyed.
+ */
+interface PageContext {
+  readonly covered: ReadonlySet<ScriptName>;
+}
+
+type Rule = (
+  m: Measured,
+  s: Script,
+  o: Required<Omit<AnalyseOptions, 'disabled'>>,
+  ctx: PageContext,
+) => Finding | undefined;
 
 const base = (m: Measured, s: Script) => ({
   selector: m.selector,
@@ -235,27 +322,68 @@ const base = (m: Measured, s: Script) => ({
  * set entirely in the Windows UI font, because the body stack ran out of
  * specific families before it reached one with Devanagari glyphs.
  */
-const fontFallback: Rule = (m, s) => {
-  if (m.resolvedFamilies.length === 0) return undefined;
+const fontFallback: Rule = (m, s, o, ctx) => {
+  const primary = primaryFont(m.resolvedFonts);
+  if (!primary) return undefined;
+
+  // "Most glyphs wins" identifies the font that drew the script only when the
+  // run is mostly that script. A run of four Devanagari characters and seven
+  // digits credits the Latin face with the majority, and the rule would then
+  // clear a page that renders its Devanagari in the system font. Mixed runs
+  // are left to the other rules rather than guessed at.
+  if (scriptPurity(m.text, s) < o.minScriptPurity) return undefined;
+
   const specific = m.declaredFamilies.filter((d) => !GENERIC_FAMILIES.has(d));
   // A stack of nothing but generics is a deliberate choice to take whatever
   // the system has, so there is no author intent here to violate.
   if (specific.length === 0) return undefined;
 
-  const strays = m.resolvedFamilies.filter((r) => !resolvedFromStack(r, m.declaredFamilies));
-  if (strays.length === 0) return undefined;
+  // Only the font that drew the script matters. A Latin face credited with a
+  // single glyph drew the space between two Devanagari words, and treating
+  // that as the author's font rendering the element hides the fault.
+  if (resolvedFromStack(primary.family, m.declaredFamilies)) return undefined;
+
+  const rendered = m.resolvedFonts
+    .map((f) => `${f.family} (${f.glyphCount})`)
+    .join(', ');
+  const detail = `declared: ${specific.join(', ')} | rendered: ${rendered}`;
+
+  /**
+   * Two different findings wear this rule's name, and conflating them made it
+   * fire on every multilingual site in the survey -- Wikipedia, the BBC, the
+   * W3C -- which is the signature of a rule nobody keeps switched on.
+   *
+   * Relying on the system's font for a script is a legitimate strategy, and
+   * for Indic often the right one: the system faces are good and a webfont
+   * costs 100KB+ a script. A page that ships no face for the script has made
+   * that choice, and is told so rather than accused.
+   *
+   * The fault is INCONSISTENCY: the page has a face for this script, proven
+   * by other text actually rendering in it, and this element missed it. That
+   * is a stylesheet that forgot a stack, and it is the bug this rule exists
+   * for -- the one it found on a real site.
+   */
+  if (!ctx.covered.has(s.name)) {
+    return {
+      ...base(m, s),
+      rule: 'font-fallback',
+      impact: 'moderate',
+      summary: `${s.label} is left to the system font; this page ships no ${s.label} face.`,
+      detail,
+      fix: `Decide this on purpose. Relying on the system's ${s.label} faces is defensible -- they are good, and a webfont costs 100KB+ a script -- but then end the stack at a generic keyword, so the next person does not read a Latin-only stack as an oversight. If the design depends on a particular face, ship one and name it here.`,
+    };
+  }
 
   return {
     ...base(m, s),
     rule: 'font-fallback',
     impact: 'critical',
-    summary: `${s.label} text rendered in ${strays.join(', ')}, which the stylesheet never asked for.`,
-    detail: `declared: ${specific.join(', ')} | rendered: ${m.resolvedFamilies.join(', ')}`,
-    fix: `Name a ${s.label} face in this stack. A Latin face carries no ${s.label} glyphs, so the browser walks the stack per glyph and takes the first font that has them -- which is whatever the operating system supplies once your own families run out.`,
+    summary: `${s.label} rendered in ${primary.family}, though this page does ship a ${s.label} face.`,
+    detail,
+    fix: `Add your ${s.label} family to this stack. Other text on this page renders in it, so the face is already loaded and paid for -- this element simply does not name it. A Latin face carries no ${s.label} glyphs, so the browser walks the stack per glyph and takes the first font that has them, which here is the operating system's.`,
   };
 };
 
-/** Consecutive lines of text overlap, so the marks of one sit in the other. */
 const lineCollision: Rule = (m, s, o) => {
   const lines = groupIntoLines(m.lineBoxes);
   if (lines.length < 2) return undefined;
@@ -269,10 +397,15 @@ const lineCollision: Rule = (m, s, o) => {
   if (worst <= o.collisionTolerancePx) return undefined;
 
   const ratio = m.fontSizePx > 0 ? m.lineHeightPx / m.fontSizePx : 0;
+  // How bad, relative to the type. 5px of overlap on 22px text is plainly
+  // visible; 1px on 16px is a squeeze nobody reports. Both are collisions and
+  // both are worth knowing, but ranking them the same puts the one you must
+  // fix in a list with the one you never will.
+  const share = m.fontSizePx > 0 ? worst / m.fontSizePx : 0;
   return {
     ...base(m, s),
     rule: 'line-collision',
-    impact: 'critical',
+    impact: share >= 0.1 ? 'critical' : 'serious',
     summary: `Lines of ${s.label} overlap by ${round(worst)}px.`,
     detail: `line-height ${round(m.lineHeightPx)}px on ${round(m.fontSizePx)}px text (${round(ratio, 2)}x)${
       s.stacked ? `; ${s.label} needs about ${s.minLeading}x because its marks sit above and below the letters` : ''
@@ -408,18 +541,25 @@ const directionMissing: Rule = (m, s) => {
   };
 };
 
-/** A physical alignment inside a right-to-left box. */
+/**
+ * A physical alignment that fights the writing direction.
+ *
+ * Only `left`, and only inside `rtl`. `text-align: right` in an rtl box is
+ * physically the same as `start`, so it misaligns nothing -- flagging it is a
+ * maintainability opinion dressed as a defect, and the survey found 58 of
+ * them on one Wikipedia page, which is exactly how a useful rule gets
+ * switched off along with the noise.
+ */
 const physicalTextAlign: Rule = (m, s) => {
   if (m.direction.trim().toLowerCase() !== 'rtl') return undefined;
-  const a = m.textAlign.trim().toLowerCase();
-  if (a !== 'left' && a !== 'right') return undefined;
+  if (m.textAlign.trim().toLowerCase() !== 'left') return undefined;
   return {
     ...base(m, s),
     rule: 'physical-text-align',
-    impact: 'moderate',
-    summary: `text-align: ${a} is hard-coded inside right-to-left text.`,
-    detail: `direction: rtl with text-align: ${a}`,
-    fix: `Use text-align: ${a === 'left' ? 'start' : 'end'}. The logical keyword follows the writing direction; the physical one has to be overridden per language and eventually is not.`,
+    impact: 'serious',
+    summary: 'text-align: left is hard-coded inside right-to-left text, so it aligns away from the reading edge.',
+    detail: 'direction: rtl with text-align: left',
+    fix: 'Use text-align: start. In a right-to-left box the logical keyword resolves to the right, which is where the reader begins; left puts the ragged edge where they expect the start of the line.',
   };
 };
 
@@ -454,10 +594,37 @@ export const analyse = (
     collisionTolerancePx: options.collisionTolerancePx ?? 0.5,
     clipTolerancePx: options.clipTolerancePx ?? 1,
     trackingToleranceEm: options.trackingToleranceEm ?? 0.015,
+    minScriptPurity: options.minScriptPurity ?? 0.6,
     minChars: options.minChars ?? 2,
   };
   const disabled = new Set(options.disabled ?? []);
   const active = RULES.filter(([id]) => !disabled.has(id));
+
+  // One pass to learn what the page as a whole can do, before judging any
+  // single element against it.
+  const covered = new Set<ScriptName>();
+  for (const m of measured) {
+    const s = dominantScript(m.text);
+    if (!s || s.name === 'latin') continue;
+    // Proof that a page ships a face has to come from a run that is almost
+    // entirely that script, or a Latin face drawing the digits in a mixed run
+    // is read as the page rendering the script correctly. One wrong proof
+    // promotes every other element on the page to critical, so this gate is
+    // deliberately stricter than the rule's own.
+    if (scriptPurity(m.text, s) < 0.9) continue;
+    const primary = primaryFont(m.resolvedFonts);
+    // And it has to be a font the page LOADED. A system Latin font that
+    // happens to carry the script is not evidence that anyone chose a face
+    // for it -- see ResolvedFont.isCustomFont.
+    if (
+      primary
+      && primary.isCustomFont
+      && resolvedFromStack(primary.family, m.declaredFamilies)
+    ) {
+      covered.add(s.name);
+    }
+  }
+  const ctx: PageContext = { covered };
 
   const findings: Finding[] = [];
   const scripts = new Map<string, number>();
@@ -474,7 +641,7 @@ export const analyse = (
     scripts.set(script.label, (scripts.get(script.label) ?? 0) + m.text.length);
 
     for (const [, rule] of active) {
-      const f = rule(m, script, o);
+      const f = rule(m, script, o, ctx);
       if (f) findings.push(f);
     }
   }

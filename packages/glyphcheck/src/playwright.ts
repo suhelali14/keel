@@ -8,7 +8,10 @@
  * be done any other way.
  */
 
-import { analyse, parseFontStack, type AnalyseOptions, type Finding, type Measured } from './analyse.js';
+import {
+  analyse, parseFontStack,
+  type AnalyseOptions, type Finding, type Measured, type ResolvedFont,
+} from './analyse.js';
 import type { CheckResult, WidthResult } from './check.js';
 import { CLEANUP_SCRIPT, COLLECT_SCRIPT, type RawCollected } from './collect.js';
 
@@ -50,7 +53,7 @@ export const checkPage = async (
   const maxElements = options.maxElements ?? 400;
   const byWidth: WidthResult[] = [];
 
-  const platformFontsFor = async (selector: string): Promise<string[]> => {
+  const platformFontsFor = async (selector: string): Promise<ResolvedFont[]> => {
     try {
       const { root } = (await cdp.send('DOM.getDocument', { depth: -1 })) as {
         root: { nodeId: number };
@@ -61,9 +64,13 @@ export const checkPage = async (
       })) as { nodeId: number };
       if (!nodeId) return [];
       const { fonts } = (await cdp.send('CSS.getPlatformFontsForNode', { nodeId })) as {
-        fonts?: Array<{ familyName: string }>;
+        fonts?: Array<{ familyName: string; glyphCount: number; isCustomFont: boolean }>;
       };
-      return (fonts ?? []).map((f) => f.familyName);
+      return (fonts ?? []).map((f) => ({
+        family: f.familyName,
+        glyphCount: f.glyphCount,
+        isCustomFont: f.isCustomFont,
+      }));
     } catch {
       return [];
     }
@@ -84,7 +91,7 @@ export const checkPage = async (
         tag: r.tag,
         text: r.text,
         declaredFamilies: parseFontStack(r.rawFontFamily),
-        resolvedFamilies: await platformFontsFor(r.probe),
+        resolvedFonts: await platformFontsFor(r.probe),
         fontSizePx: r.fontSizePx,
         lineHeightPx: r.lineHeightPx,
         letterSpacingPx: r.letterSpacingPx,

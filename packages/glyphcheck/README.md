@@ -34,7 +34,7 @@ it assume the site just looks like that.
 ## This was found this way
 
 The first thing this tool was ever pointed at was the author's own production
-site. It found **589 text faults** across two languages, including every
+site. It found **469 text faults** across two languages, including every
 paragraph of Marathi and Hindi rendering in `Nirmala UI` instead of the IBM
 Plex Sans Devanagari the build was shipping, serving and paying for.
 
@@ -48,6 +48,7 @@ because none of them asks the browser which font actually drew the glyphs.
 | Rule | What it means |
 |---|---|
 | `font-fallback` | The glyphs were drawn by a font your stylesheet never named. |
+| | **critical** when the page ships a face for that script and one stack forgot it. **moderate** when the page ships none, which is a strategy to confirm rather than a bug. |
 | `line-collision` | Lines of text overlap, so one line's marks sit inside another's. |
 | `glyph-clipping` | Text is cut off by a box whose height was decided by Latin. |
 | `tracking-damage` | `letter-spacing` is severing a script whose letters connect. |
@@ -199,6 +200,17 @@ worse than none.
   teaches people to ignore the output. Only `text-align` is checked, where the
   intent is unambiguous.
 - **Chromium only**, per above.
+- **Font attribution is a proxy, not an oracle.** CDP gives a glyph count per
+  font, never which codepoints each drew. So the font credited with the most
+  glyphs is taken as the one that drew the script, and a run with fewer than
+  60% of its drawable characters in that script is skipped rather than
+  guessed at. [docs/SURVEY.md](https://github.com/suhelali14/keel/blob/main/docs/SURVEY.md)
+  has the three real pages that forced that rule into shape.
+- **Four of the seven rules have no field evidence.** A survey of 11
+  multilingual pages fired `line-collision`, `font-fallback` and
+  `glyph-clipping`, and nothing else. The other four are unit-tested against
+  deliberately broken fixtures, which is not the same as knowing the fault
+  happens in the wild.
 
 ## Design notes
 

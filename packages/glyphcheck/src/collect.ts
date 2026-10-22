@@ -6,7 +6,7 @@ import type { Measured } from './analyse.js';
  * Everything except which font actually drew the glyphs, which no web API
  * exposes -- that comes from the debugging protocol, keyed on `probe`.
  */
-export type Collected = Omit<Measured, 'resolvedFamilies'> & {
+export type Collected = Omit<Measured, 'resolvedFonts'> & {
   /**
    * A selector that matches this element and nothing else, used to find it
    * again from outside the page. Not for human consumption; `selector` is.

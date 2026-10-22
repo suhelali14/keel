@@ -174,7 +174,7 @@ glyphs.
 
 | | Findings |
 |---|---|
-| First run, `nayaverse.in/mr` | **589** (308 critical) |
+| `nayaverse.in/mr`, before | **469** across 5 rules, **307 critical** |
 | After the fixes | **0**, across 8 pages × 4 widths × 2 languages |
 
 **Seven distinct root causes**, all in CSS, all invisible to everyone on the
@@ -195,8 +195,8 @@ is in the wrong font:
 7. `lang="ur"` does not imply direction, so the Urdu entry laid out
    left-to-right.
 
-**The fix was 71 lines added, 36 removed — net 35 lines of CSS.** 589 faults,
-seven causes, 35 lines. That ratio is the point: these are not 589 problems,
+**The fix was 71 lines added, 36 removed — net 35 lines of CSS.** 469 faults,
+seven causes, 35 lines. That ratio is the point: these are not 469 problems,
 they are seven one-line mistakes repeated across a stylesheet, and the only
 hard part was knowing they were there.
 
@@ -233,9 +233,9 @@ one place:
 | Lines of package call-site added | 6 |
 | Commits to that one workflow file | 15 |
 | Production failures that shaped the live check | 3 |
-| Text faults found behind a green build | 589 |
+| Text faults found behind a green build | 469 |
 | Root causes behind them | 7 |
-| CSS lines changed to fix all 589 | 35 net |
+| CSS lines changed to fix all 469 | 35 net |
 | Runtime dependencies across all four packages | 0 |
 
 Read down that list and the pattern is the same each time: **the typing was
@@ -271,7 +271,7 @@ go wrong first.
 
 ## Two things that would make this accounting better
 
-1. **Wire glyphcheck into the pipeline.** It has found 589 real faults and is
+1. **Wire glyphcheck into the pipeline.** It has found 469 real faults and is
    still run by hand, which means the next one will be found by hand too — or
    not at all. One step, next to the overflow sweep.
 2. **Use preflight or drop it.** It is 364 lines and 17 tests of unexercised
@@ -296,11 +296,20 @@ git show 2d1c2ea -- .github/workflows/deploy-static.yml
 # How many times that file was corrected
 git log --oneline -- .github/workflows/deploy-static.yml | wc -l
 
-# The 589 findings, and the 0 after
+# The 469 findings, and the 0 after
 npx glyphcheck https://www.nayaverse.in/mr --widths 390,1280
 ```
 
-Dependency counts are read from each `package.json`. The 589 and the 0 are
+Dependency counts are read from each `package.json`. The 469 and the 0 are
 `glyphcheck`'s own output against the live site before the fixes and the built
 site after them. No figure here is an estimate, and no figure here is
 extrapolated beyond this one project.
+
+**One correction worth recording.** An earlier draft of this document said
+589. That number came from the first draft of the rules, before two of them
+were tuned: the tracking threshold was sub-pixel, and clipping had no
+exemption for the `.sr-only` pattern, so it reported 7 elements of text that
+was hidden from sight on purpose. Comparing 589 to a 0 measured with the
+shipped rules compares two different rulers. Both figures here are now from
+`@nayaverse/glyphcheck@0.1.0` as published, against the live site, which still
+carries the fault at the time of writing.

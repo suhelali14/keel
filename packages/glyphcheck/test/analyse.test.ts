@@ -6,9 +6,23 @@ import {
   groupIntoLines,
   parseFontStack,
   resolvedFromStack,
+  scriptPurity,
   type LineBox,
   type Measured,
 } from '../src/analyse.js';
+import { scriptByName } from '../src/scripts.js';
+
+/**
+ * Where a font came from, which the rules care about as much as its name.
+ *
+ * `web` is a face the page loaded through @font-face: evidence somebody chose
+ * it. `sys` is a face that was already on the machine. A system Latin font
+ * that happens to carry Arabic -- Times New Roman does -- is not evidence
+ * that anyone picked a face for Arabic, and conflating the two had a BBC page
+ * reported as inconsistent rather than as relying on system fonts.
+ */
+const web = (family: string, glyphCount: number) => ({ family, glyphCount, isCustomFont: true });
+const sys = (family: string, glyphCount: number) => ({ family, glyphCount, isCustomFont: false });
 
 /** A clean element. Each test breaks exactly one thing about it. */
 const el = (over: Partial<Measured> = {}): Measured => ({
@@ -16,7 +30,7 @@ const el = (over: Partial<Measured> = {}): Measured => ({
   tag: 'P',
   text: 'तुम्ही काय विकता, काय शिल्लक आहे',
   declaredFamilies: ['ibm plex sans', 'ibm plex sans devanagari', 'sans-serif'],
-  resolvedFamilies: ['IBM Plex Sans Devanagari'],
+  resolvedFonts: [web('IBM Plex Sans Devanagari', 28)],
   fontSizePx: 16,
   lineHeightPx: 24,
   letterSpacingPx: 0,
@@ -107,27 +121,135 @@ test('the most specific declared family is the one reported as the match', () =>
 // ---------------------------------------------------------------------------
 
 test('the real bug: Devanagari drawn in the Windows system font', () => {
-  const r = analyse([el({
-    declaredFamilies: ['ibm plex sans variable', 'ibm plex sans', 'system-ui', 'sans-serif'],
-    resolvedFamilies: ['Nirmala UI', 'IBM Plex Sans'],
-  })]);
+  // As it actually stood on a live site: the Devanagari face was shipped,
+  // served and loaded -- the status rows rendered in it -- and the body stack
+  // never named it, so every paragraph fell through to the OS. That is what
+  // makes it critical rather than a system-font strategy, and the covering
+  // element below is what lets the rule tell the two apart.
+  const r = analyse([
+    el(),
+    el({
+      selector: 'main > p.lede',
+      declaredFamilies: ['ibm plex sans variable', 'ibm plex sans', 'system-ui', 'sans-serif'],
+      resolvedFonts: [
+        sys('Nirmala UI', 26),
+        web('IBM Plex Sans', 3),
+      ],
+    }),
+  ]);
   const f = r.findings.find((x) => x.rule === 'font-fallback');
   assert.ok(f, 'expected a font-fallback finding');
   assert.equal(f.impact, 'critical');
+  assert.equal(f.selector, 'main > p.lede');
   assert.match(f.summary, /Nirmala UI/);
   assert.match(f.detail, /declared: ibm plex sans variable, ibm plex sans/);
-  // The families that DID come from the stack must not be blamed.
-  assert.doesNotMatch(f.summary, /IBM Plex Sans,/);
+  // The glyph counts have to reach the report: they are the evidence that the
+  // system font drew the script and the declared one drew the spaces.
+  assert.match(f.detail, /Nirmala UI \(26\)/);
+  assert.match(f.detail, /IBM Plex Sans \(3\)/);
+});
+
+test('a declared font credited with one glyph does not excuse the fallback', () => {
+  // The exact false positive a survey of real sites exposed: a BBC page in
+  // Hindi reported Arial alongside Nirmala UI, because Arial had drawn the
+  // single space inside a two-word Devanagari run. Asking whether a declared
+  // family appeared -- rather than whether it drew the script -- called that
+  // page correct.
+  const r = analyse([
+    el(),
+    el({
+      declaredFamilies: ['arial', 'verdana', 'helvetica', 'sans-serif'],
+      resolvedFonts: [
+        sys('Nirmala UI', 14),
+        sys('Arial', 1),
+      ],
+    }),
+  ]);
+  const f = r.findings.find((x) => x.rule === 'font-fallback');
+  assert.ok(f, 'Arial drawing one space is not Arial rendering the Devanagari');
+  assert.match(f.summary, /Nirmala UI/);
+});
+
+test('the font that drew the script being declared means there is no fault', () => {
+  // The mirror image, and the other false positive this removes: a symbol
+  // font drew a bullet, the author's face drew everything else.
+  assert.ok(!rules([el({
+    declaredFamilies: ['ibm plex sans devanagari', 'sans-serif'],
+    resolvedFonts: [
+      web('IBM Plex Sans Devanagari', 26),
+      sys('Segoe UI Symbol', 1),
+    ],
+  })]).includes('font-fallback'));
+});
+
+test('a page with no face for the script at all is told, not accused', () => {
+  // Wikipedia and the BBC ship no Devanagari webfont and let the system
+  // render it. That is a defensible decision -- system Indic faces are good
+  // and a webfont costs 100KB+ a script -- so it is reported as a decision
+  // to make on purpose, not as a critical defect.
+  const r = analyse([el({
+    declaredFamilies: ['linux libertine', 'georgia', 'times'],
+    resolvedFonts: [sys('Nirmala UI', 26)],
+  })]);
+  const f = r.findings.find((x) => x.rule === 'font-fallback');
+  assert.ok(f);
+  assert.equal(f.impact, 'moderate');
+  assert.match(f.summary, /ships no Devanagari face/);
+});
+
+test('a page that DOES ship the face, with one element missing it, is critical', () => {
+  // This is the bug the rule was written for and the one found on a real
+  // site: the face is loaded and paid for, and one stack forgot to name it.
+  const r = analyse([
+    el(),                                             // uses the declared Devanagari face
+    el({                                              // and this one does not
+      selector: 'main > h2',
+      declaredFamilies: ['barlow condensed', 'arial narrow'],
+      resolvedFonts: [sys('Nirmala UI', 26)],
+    }),
+  ]);
+  const f = r.findings.find((x) => x.rule === 'font-fallback');
+  assert.ok(f);
+  assert.equal(f.impact, 'critical');
+  assert.match(f.summary, /does ship a Devanagari face/);
+  assert.equal(f.selector, 'main > h2');
+});
+
+test('coverage is per script, not per page', () => {
+  // Shipping a Devanagari face says nothing about Tamil.
+  const r = analyse([
+    el(),
+    el({
+      text: 'உங்கள் வணிகம் எப்படி நடக்கிறது',
+      resolvedFonts: [sys('Nirmala UI', 26)],
+    }),
+  ]);
+  const tamil = r.findings.find((x) => x.scriptLabel === 'Tamil' && x.rule === 'font-fallback');
+  assert.ok(tamil);
+  assert.equal(tamil.impact, 'moderate', 'no Tamil face was ever proven on this page');
+});
+
+test('collision severity follows how bad it is, not just that it happened', () => {
+  const impactOf = (fontSizePx: number, overlap: number) =>
+    analyse([el({
+      fontSizePx,
+      lineBoxes: [r(100, 118), r(118 - overlap, 136)],
+    })]).findings.find((f) => f.rule === 'line-collision')?.impact;
+
+  // 5px on 22px text is plainly visible; 1px on 16px is a squeeze nobody
+  // reports. Both are collisions; ranking them alike buries the first.
+  assert.equal(impactOf(22, 5), 'critical');
+  assert.equal(impactOf(16, 1), 'serious');
 });
 
 test('a stack of nothing but generics is a choice, not a fault', () => {
   const r = analyse([el({
     declaredFamilies: ['system-ui', 'sans-serif'],
-    resolvedFamilies: ['Nirmala UI'],
+    resolvedFonts: [sys('Nirmala UI', 26)],
   })]);
   assert.ok(!rules([el({
     declaredFamilies: ['system-ui', 'sans-serif'],
-    resolvedFamilies: ['Nirmala UI'],
+    resolvedFonts: [sys('Nirmala UI', 26)],
   })]).includes('font-fallback'));
   assert.equal(r.findings.length, 0);
 });
@@ -135,12 +257,15 @@ test('a stack of nothing but generics is a choice, not a fault', () => {
 test('a mixed run is clean when every face came from the stack', () => {
   assert.ok(!rules([el({
     declaredFamilies: ['barlow condensed', 'khand'],
-    resolvedFamilies: ['Barlow Condensed SemiBold', 'Khand SemiBold'],
+    resolvedFonts: [
+      web('Khand SemiBold', 26),
+      web('Barlow Condensed SemiBold', 3),
+    ],
   })]).includes('font-fallback'));
 });
 
 test('no reported faces means nothing to judge, not a fault', () => {
-  assert.deepEqual(analyse([el({ resolvedFamilies: [] })]).findings, []);
+  assert.deepEqual(analyse([el({ resolvedFonts: [] })]).findings, []);
 });
 
 // ---------------------------------------------------------------------------
@@ -336,10 +461,15 @@ test('right-to-left text in a right-to-left box is correct', () => {
     .includes('direction-missing'));
 });
 
-test('a physical text-align inside rtl is reported, a logical one is not', () => {
+test('only the alignment that actually misaligns rtl text is reported', () => {
   const rtl = { text: 'ما تبيعه وما تبقى في المخزون', direction: 'rtl' };
   assert.ok(rules([el({ ...rtl, textAlign: 'left' })]).includes('physical-text-align'));
-  assert.ok(rules([el({ ...rtl, textAlign: 'right' })]).includes('physical-text-align'));
+
+  // `right` inside rtl is physically where `start` already resolves, so it
+  // misaligns nothing. A survey of real pages produced 58 of these on one
+  // Wikipedia page -- a maintainability opinion reported as a defect, which
+  // is how the rules that matter get switched off along with the noise.
+  assert.ok(!rules([el({ ...rtl, textAlign: 'right' })]).includes('physical-text-align'));
   assert.ok(!rules([el({ ...rtl, textAlign: 'start' })]).includes('physical-text-align'));
   assert.ok(!rules([el({ ...rtl, textAlign: 'center' })]).includes('physical-text-align'));
 });
@@ -353,17 +483,25 @@ test('a physical text-align in a left-to-right box is normal and not reported', 
 // ---------------------------------------------------------------------------
 
 test('findings come back worst first', () => {
-  const r = analyse([el({
-    resolvedFamilies: ['Nirmala UI'],
-    letterSpacingPx: 2,
-    textTransform: 'uppercase',
-  })]);
+  const r = analyse([
+    // One element proving the page HAS a Devanagari face, so the fallback on
+    // the next one is an inconsistency rather than a system-font strategy.
+    el(),
+    el({
+      resolvedFonts: [sys('Nirmala UI', 26)],
+      letterSpacingPx: 2,
+      textTransform: 'uppercase',
+    }),
+  ]);
   assert.deepEqual(r.findings.map((f) => f.impact), ['critical', 'serious', 'moderate']);
   assert.equal(r.ok, false);
 });
 
 test('a disabled rule is not run', () => {
-  const broken = [el({ resolvedFamilies: ['Nirmala UI'], letterSpacingPx: 2 })];
+  const broken = [
+    el(),
+    el({ resolvedFonts: [sys('Nirmala UI', 26)], letterSpacingPx: 2 }),
+  ];
   assert.deepEqual(
     analyse(broken, { disabled: ['font-fallback'] }).findings.map((f) => f.rule),
     ['tracking-damage'],
@@ -373,7 +511,7 @@ test('a disabled rule is not run', () => {
 test('a Latin word inside a Hindi sentence does not make the sentence Latin', () => {
   const r = analyse([el({
     text: 'आपका Nayaverse डैशबोर्ड तैयार है',
-    resolvedFamilies: ['Nirmala UI'],
+    resolvedFonts: [sys('Nirmala UI', 26)],
   })]);
   const f = r.findings.find((x) => x.rule === 'font-fallback');
   assert.ok(f);
@@ -401,4 +539,104 @@ test('a known boundary: a short non-Latin phrase behind a long Latin name is ski
   assert.equal(analyse([el({ text: 'خطة Nayaverse', direction: 'ltr' })]).examined, 0);
   // One more word of Arabic and it is examined again.
   assert.equal(analyse([el({ text: 'خطة Nayaverse الشهرية', direction: 'ltr' })]).examined, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Attribution: which font drew the script, when CDP only gives totals
+// ---------------------------------------------------------------------------
+
+test('a run that is mostly its own script is attributable', () => {
+  // 20 Devanagari characters against 9 Latin ones. The Devanagari font holds
+  // the majority of the glyphs, so "most glyphs" names it correctly.
+  assert.ok(analyse([
+    el(),
+    el({
+      text: 'आपका Nayaverse डैशबोर्ड तैयार है',
+      resolvedFonts: [sys('Nirmala UI', 26)],
+    }),
+  ]).findings.some((f) => f.rule === 'font-fallback'));
+});
+
+test('a run that is mostly digits is NOT attributable, and is skipped', () => {
+  // The run that broke this on a real page: ", अवधि 9,55" is four Devanagari
+  // characters and seven digits and commas. Arial drew the digits and is in
+  // the declared stack, so "most glyphs" named Arial and the page was cleared
+  // while its Devanagari sat in the system font. Neither answer is available
+  // from a glyph total, so the honest move is to say nothing about this run.
+  const r = analyse([el({
+    text: ', अवधि 9,55,000',
+    declaredFamilies: ['arial', 'verdana', 'sans-serif'],
+    resolvedFonts: [
+      sys('Nirmala UI', 4),
+      sys('Arial', 7),
+    ],
+  })]);
+  assert.ok(!r.findings.some((f) => f.rule === 'font-fallback'));
+});
+
+test('a mixed run cannot prove a page ships a face either', () => {
+  // The same run must not be accepted as proof of coverage, or one of them
+  // promotes every other element on the page to critical.
+  const r = analyse([
+    el({
+      text: ', अवधि 9,55,000',
+      declaredFamilies: ['arial', 'verdana', 'sans-serif'],
+      resolvedFonts: [
+        sys('Nirmala UI', 4),
+        sys('Arial', 7),
+      ],
+    }),
+    el({
+      selector: 'main > p',
+      declaredFamilies: ['arial', 'sans-serif'],
+      resolvedFonts: [sys('Nirmala UI', 26)],
+    }),
+  ]);
+  const f = r.findings.find((x) => x.rule === 'font-fallback');
+  assert.ok(f);
+  assert.equal(f.impact, 'moderate', 'nothing here proved a Devanagari face');
+});
+
+test('scriptPurity counts only what a font needs a real glyph for', () => {
+  const dev = scriptByName('devanagari');
+  assert.equal(scriptPurity('साइन इन', dev), 1, 'spaces are drawn by anything');
+  assert.equal(scriptPurity('9,55,000', dev), 0);
+  assert.ok(scriptPurity('आपका Nayaverse डैशबोर्ड तैयार है', dev) > 0.6);
+  assert.ok(scriptPurity(', अवधि 9,55,000', dev) < 0.6);
+});
+
+test('a system font that happens to carry the script proves nothing', () => {
+  // BBC Arabic declares `times new roman` on one link. Times New Roman
+  // carries Arabic on Windows, so that element rendered Arabic in a declared
+  // family -- and without asking where the font came from, the rule read it
+  // as "this page ships an Arabic face" and called 241 other elements
+  // critical. The page ships no Arabic webfont at all.
+  const arabic = 'ما تبيعه وما تبقى في المخزون';
+  const r = analyse([
+    el({ text: 'عربي', declaredFamilies: ['times new roman'], resolvedFonts: [sys('Times New Roman', 4)] }),
+    el({
+      selector: 'main > p',
+      text: arabic,
+      declaredFamilies: ['helvetica', 'arial', 'sans-serif'],
+      resolvedFonts: [sys('Segoe UI', 26)],
+      direction: 'rtl',
+    }),
+  ]);
+  const f = r.findings.find((x) => x.rule === 'font-fallback' && x.selector === 'main > p');
+  assert.ok(f);
+  assert.equal(f.impact, 'moderate', 'no Arabic face was ever shipped by this page');
+});
+
+test('a webfont the page loaded DOES prove it, so a missing stack is critical', () => {
+  const r = analyse([
+    el(),
+    el({
+      selector: 'main > h2',
+      declaredFamilies: ['barlow condensed', 'arial narrow'],
+      resolvedFonts: [sys('Nirmala UI', 26)],
+    }),
+  ]);
+  const f = r.findings.find((x) => x.selector === 'main > h2' && x.rule === 'font-fallback');
+  assert.ok(f);
+  assert.equal(f.impact, 'critical');
 });
