@@ -4,14 +4,23 @@
   "type": "module",
   "description": "Deployment tooling that verifies reality, not the build.",
   "license": "MIT",
-  "engines": { "node": ">=20" },
-  "workspaces": ["packages/*"],
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "release": "npm publish --workspaces --access public"
   },
   "devDependencies": {
     "typescript": "~5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suhelali14/keel.git"
   }
 }

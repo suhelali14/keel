@@ -19,7 +19,7 @@
     "verify-deploy": "./dist/src/cli.js"
   },
   "files": [
-    "dist",
+    "dist/src",
     "README.md"
   ],
   "keywords": [
@@ -35,9 +35,24 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test dist/test/*.test.js",
     "pretest": "npm run build",
-    "usage": "node dist/src/cli.js --help"
+    "usage": "node dist/src/cli.js --help",
+    "prepublishOnly": "npm test"
   },
   "devDependencies": {
     "@types/node": "^22.10.2"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suhelali14/keel.git",
+    "directory": "packages/verify-deploy"
+  },
+  "homepage": "https://github.com/suhelali14/keel/tree/main/packages/verify-deploy#readme",
+  "bugs": {
+    "url": "https://github.com/suhelali14/keel/issues"
+  },
+  "author": "Suhelali Pakjade",
+  "sideEffects": false
 }

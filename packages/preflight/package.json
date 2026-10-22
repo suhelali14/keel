@@ -4,16 +4,43 @@
   "description": "Validate configuration across many sources before anything expensive happens, and heal what can be computed.",
   "license": "MIT",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
-  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
-  "files": ["dist", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test dist/test/*.test.js",
-    "pretest": "npm run build"
+    "pretest": "npm run build",
+    "prepublishOnly": "npm test"
   },
-  "devDependencies": { "@types/node": "^22.10.2" }
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suhelali14/keel.git",
+    "directory": "packages/preflight"
+  },
+  "homepage": "https://github.com/suhelali14/keel/tree/main/packages/preflight#readme",
+  "bugs": {
+    "url": "https://github.com/suhelali14/keel/issues"
+  },
+  "author": "Suhelali Pakjade",
+  "sideEffects": false
 }
