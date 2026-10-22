@@ -16,7 +16,7 @@
     }
   },
   "bin": {
-    "verify-deploy": "./dist/src/cli.js"
+    "verify-deploy": "dist/src/cli.js"
   },
   "files": [
     "dist/src",

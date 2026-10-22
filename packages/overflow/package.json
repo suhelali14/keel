@@ -20,7 +20,7 @@
     }
   },
   "bin": {
-    "overflow": "./dist/src/cli.js"
+    "overflow": "dist/src/cli.js"
   },
   "files": [
     "dist/src",

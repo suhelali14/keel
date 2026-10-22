@@ -32,8 +32,49 @@ packages.
 > find-and-replace across the READMEs; after publishing it is a deprecation
 > and a migration note.
 
-**4. Two-factor.** npm requires it for publishing. Turn it on in account
-settings; you will be asked for a code at publish time.
+**4. Two-factor.** npm **requires** it to publish. Without it the publish
+fails at the very last step, after the tests have run and the tarball has been
+built:
+
+```
+npm error code E403
+npm error 403 Forbidden - PUT https://registry.npmjs.org/@nayaverse%2foverflow
+npm error Two-factor authentication or granular access token with bypass 2fa
+npm error enabled is required to publish packages.
+```
+
+Two ways through, and they are for different jobs.
+
+**Publishing by hand — turn on 2FA.**
+[npmjs.com/settings/~/2fa](https://www.npmjs.com/settings/~/2fa) -> enable for
+*Authorization and writes*, scan the QR with any authenticator app, and save
+the recovery codes somewhere that is not this machine. Then:
+
+```bash
+npm run release          # prompts for the 6-digit code
+```
+
+If the prompt does not appear (some Windows terminals swallow it), pass the
+code instead. It changes every 30 seconds, so type it last:
+
+```bash
+npm publish --workspaces --access public --otp=123456
+```
+
+**Publishing from CI — use a granular token.** A pipeline cannot type a code.
+[npmjs.com/settings/~/tokens](https://www.npmjs.com/settings/~/tokens) ->
+Generate New Token -> **Granular Access Token**, scoped to the `@nayaverse`
+packages, with **Bypass 2FA** on and read-and-write permission. Keep the
+expiry short and put it in the repo as `NPM_TOKEN`:
+
+```yaml
+- run: npm run release
+  env:
+    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+A granular token scoped to these packages is the right shape for this: a leak
+lets somebody publish these three packages, not touch the whole account.
 
 ## Publishing
 
@@ -60,6 +101,25 @@ cd packages/overflow && npm pack --dry-run
 
 Should be `dist/src`, the README, and the manifest. **Not** `dist/test`, not
 `src`. Current sizes: 14 kB, 19 kB, 13 kB.
+
+**Read the warnings, not just the file list.** A real one, caught on the first
+publish attempt:
+
+```
+npm warn publish "bin[overflow]" script name dist/src/cli.js was invalid and removed
+```
+
+npm rejects a leading `./` in a `bin` path and **drops the entry** rather than
+correcting it. The package would have installed fine and `npx overflow` would
+not have existed — while both READMEs told people to run exactly that. `npm
+pkg fix` rewrites `./dist/src/cli.js` to `dist/src/cli.js`.
+
+The way to be sure is to install the tarball and look for the binary, not to
+read the manifest:
+
+```bash
+ls node_modules/.bin/        # overflow, verify-deploy
+```
 
 And install the tarballs into a throwaway project to confirm the published
 artifact works, rather than the source:
