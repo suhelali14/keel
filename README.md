@@ -105,12 +105,22 @@ ordinary failures of shipping anything.
 
 ---
 
+## Documentation
+
+| | |
+|---|---|
+| [docs/VALUE.md](docs/VALUE.md) | What each package solves and what it is worth, measured — 43 lines of shell replaced by 6, 589 text faults found behind a green build, and which packages are not yet earning anything. |
+| [docs/USING-IT.md](docs/USING-IT.md) | The worked before-and-after of swapping hand-rolled deploy checks for these. |
+| [docs/PRIOR-ART.md](docs/PRIOR-ART.md) | What already exists, and why three of the seven originally planned packages were not built. |
+| [docs/PATTERNS.md](docs/PATTERNS.md) | The patterns worth writing down rather than packaging. |
+| [docs/RELEASING.md](docs/RELEASING.md) | Publishing, and the npm traps that cost a version number. |
+
 ## Development
 
 ```bash
 npm install
 npm run build
-npm test
+npm test          # 91 tests
 ```
 
 Node 20+. No runtime dependencies in any package.

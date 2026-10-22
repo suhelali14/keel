@@ -11,9 +11,9 @@ CDN by a workflow that already had both checks written by hand.
 
 ## Before: the checks written inline
 
-Two steps, about 60 lines of shell between them. Both were written in response
-to a specific failure, and both work. They are also 60 lines of shell that
-every project has to write again, test again, and get wrong again.
+Two steps, 43 lines of YAML and shell in the one that mattered. Both were
+written in response to a specific failure, and both work. They are also 43
+lines that every project has to write again, test again, and get wrong again.
 
 ```yaml
 - name: Check the pages actually contain their content
@@ -153,10 +153,11 @@ schema has been migrated and a container has been restarted.
 
 ## What this is worth
 
-Roughly 60 lines of shell replaced by 6, in one project. That is not the
+43 lines of shell replaced by 6, in one project, measured from the diff in
+`2d1c2ea`. That is not the
 argument.
 
-The argument is that the 60 lines were written three times before they were
+The argument is that those 43 lines were corrected three times before they were
 right, and each rewrite came after a failure that reached production: a
 routing fault a green build could not see, an auth wall misread as a 404, and
 a summary that printed success for a failed run. Every project that writes
