@@ -1,6 +1,6 @@
 {
   "name": "@nayaverse/preflight",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Validate configuration across many sources before anything expensive happens, and heal what can be computed.",
   "license": "MIT",
   "type": "module",
@@ -13,7 +13,8 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist/src",

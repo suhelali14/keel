@@ -1,6 +1,6 @@
 {
   "name": "@nayaverse/overflow",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Find horizontal overflow at every breakpoint in CI, and name the element causing it.",
   "license": "MIT",
   "type": "module",
@@ -17,7 +17,8 @@
     "./playwright": {
       "types": "./dist/src/playwright.d.ts",
       "default": "./dist/src/playwright.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "overflow": "dist/src/cli.js"

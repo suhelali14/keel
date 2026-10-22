@@ -1,6 +1,6 @@
 {
   "name": "@nayaverse/verify-deploy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Assert the public URL serves the build you just shipped, and that every route answers.",
   "license": "MIT",
   "type": "module",
@@ -13,7 +13,8 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "verify-deploy": "dist/src/cli.js"
